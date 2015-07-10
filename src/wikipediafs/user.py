@@ -66,7 +66,7 @@ class User:
 
         printlog(self.logger, "debug", "Logging in with username %s." % self.username)
         self.logintoken = None
-        cookie_list = []
+        cookies = {}
         conn = ExtendedHTTPConnection(self.host, self.port, self.https)
 
         if self.httpauth_username and self.httpauth_password:
@@ -101,10 +101,11 @@ class User:
         # If we have a login token, then we also need to send the cookie from the initial connection.
         # If we don't, then doing so breaks the login.
 
-        token_session = re.search('(.*?);', response.getheader("Set-Cookie")).group(1)
+        token_matches = re.search('((.*?)=(.*?));', response.getheader("Set-Cookie"));
+        token_session = token_matches.group(1)
         if self.logintoken:
             headers["Cookie"] = token_session
-            cookie_list.append(token_session)
+            cookies[token_matches.group(2)] = token_matches.group(3)
 
         printlog(self.logger, "debug", "Headers:")
         printlog(self.logger, "debug", headers)
@@ -125,28 +126,31 @@ class User:
         response = conn.getresponse()
         printlog(self.logger, "debug", "URL: %s, response status: %d, text: %s" % (self.login_page, response.status, response.read()))
 
-        in_cookie = re.compile(': (.*?);')
+        in_cookie = re.compile(': ((.*?)=(.*?));')
 
         for cookie_value in response.msg.getallmatchingheaders("set-cookie"):
+            printlog(self.logger, "debug", "cookie: %s" % cookie_value)
             it_matches = in_cookie.search(cookie_value)
 
             if it_matches:
-                cookie_list.append(it_matches.group(1))
+                cookies[it_matches.group(2)] = it_matches.group(3)
 
         conn.close()
 
         printlog(self.logger, "debug", "cookie_list:")
-        printlog(self.logger, "debug", cookie_list)
+        printlog(self.logger, "debug", cookies)
 
-        if len(cookie_list) == 4:
-            cookie_list.pop()
-            printlog(self.logger, "info",
-                     "Logged in successfully with username %s" % self.username)
-                #self.logger.info("; ".join(cookie_list))
-            return "; ".join(cookie_list)
+        if cookies.has_key('wikidbUserName'):
+            cookie_str = ""
+            for k, v in cookies.iteritems():
+                if cookie_str == "":
+                    cookie_str = "%s=%s;" % (k, v)
+                else:
+                    cookie_str += " %s=%s;" % (k, v)
+            printlog(self.logger, "info", "Logged in successfully with username %s" % self.username)
+            return cookie_str
         else:
-            printlog(self.logger, "warning",
-                     "Could not log in with username %s: %s" % self.username)
+            printlog(self.logger, "warning", "Could not log in with username %s" % self.username)
             return None
 
 
